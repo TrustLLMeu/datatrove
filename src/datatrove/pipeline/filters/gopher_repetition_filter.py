@@ -80,6 +80,7 @@ class GopherRepetitionFilter(BaseFilter):
         dup_para_char_frac: float | None = 0.2,
         top_n_grams: tuple[tuple[int, float]] = ((2, 0.2), (3, 0.18), (4, 0.16)),
         dup_n_grams: tuple[tuple[int, float]] = ((5, 0.15), (6, 0.14), (7, 0.13), (8, 0.12), (9, 0.11), (10, 0.10)),
+        language: str = "english",
         exclusion_writer: DiskWriter = None,
     ):
         """
@@ -102,6 +103,7 @@ class GopherRepetitionFilter(BaseFilter):
         self.top_n_grams = top_n_grams
         self.dup_n_grams = dup_n_grams
         self.paragraph_exp = re.compile(r"\n{2,}")
+        self.language = language
 
     def filter(self, doc: Document) -> bool | tuple[bool, str]:
         from nltk.tokenize import word_tokenize
@@ -122,7 +124,7 @@ class GopherRepetitionFilter(BaseFilter):
         if self.dup_line_char_frac and char_duplicates / len(text) > self.dup_line_char_frac:
             return False, "dup_line_char_frac"
 
-        words = word_tokenize(text, language="english")  # TODO we should use language id filter
+        words = word_tokenize(text, self.language)  # TODO we should use language id filter
 
         for n, n_frac in self.top_n_grams:
             n_grams = get_n_grams(words, n)
