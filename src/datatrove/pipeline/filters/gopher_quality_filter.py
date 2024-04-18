@@ -6,9 +6,6 @@ from datatrove.pipeline.writers.disk_base import DiskWriter
 from datatrove.utils.text import PUNCTUATION_SET
 
 
-STOP_WORDS = ["the", "be", "to", "of", "and", "that", "have", "with"]
-
-
 class GopherQualityFilter(BaseFilter):
     name = "🥇 Gopher Quality"
     _requires_dependencies = ["nltk"]
@@ -25,6 +22,7 @@ class GopherQualityFilter(BaseFilter):
         max_non_alpha_words_ratio: float | None = 0.8,
         min_stop_words: int | None = 2,
         stop_words: list[str] | None = None,
+        language: str = 'english',
         exclusion_writer: DiskWriter = None,
     ):
         """
@@ -45,6 +43,7 @@ class GopherQualityFilter(BaseFilter):
             exclusion_writer:
         """
         super().__init__(exclusion_writer)
+        from nltk.corpus import stopwords
         self.min_doc_words = min_doc_words
         self.max_doc_words = max_doc_words
         self.min_avg_word_length = min_avg_word_length
@@ -54,7 +53,8 @@ class GopherQualityFilter(BaseFilter):
         self.max_ellipsis_lines_ratio = max_ellipsis_lines_ratio
         self.max_non_alpha_words_ratio = max_non_alpha_words_ratio
         self.min_stop_words = min_stop_words
-        self.stop_words = set(STOP_WORDS if stop_words is None else stop_words)
+        self.language = language
+        self.stop_words = set(stopwords.words(language) if stop_words is None else stop_words)
 
     def filter(self, doc: Document) -> bool | tuple[bool, str]:
         """
@@ -69,7 +69,7 @@ class GopherQualityFilter(BaseFilter):
         from nltk.tokenize import word_tokenize
 
         text = doc.text
-        words = word_tokenize(text)  # TODO we should use language id filter
+        words = word_tokenize(text, self.language)  # TODO we should use language id filter
         n_words = len(words)
 
         non_symbol_words = [w for w in words if any(ch not in PUNCTUATION_SET for ch in w)]
