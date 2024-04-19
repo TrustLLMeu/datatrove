@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
 
 from loguru import logger
 
@@ -53,11 +54,11 @@ class BaseExtractor(PipelineStep):
                     future = executor.submit(self.extract, doc.text)
                     try:
                         doc.text = future.result(timeout=self.timeout)
-                    except TimeoutError:
+                    except concurrent.futures._base.TimeoutError as e:
                         logger.warning("⏰ Timeout while cleaning record text. Skipping record.")
                         continue
                     except Exception as e:
-                        logger.warning(f'❌ Error "{e}" while cleaning record text. Skipping record.')
+                        logger.error(f'❌ Error "{e}" while cleaning record text. Skipping record.')
                         continue
                 if doc.text:
                     self.stat_update(StatHints.forwarded)
