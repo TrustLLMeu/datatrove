@@ -53,3 +53,40 @@ class Trafilatura(BaseExtractor):
             deduplicate=self.deduplicate,
             **self.kwargs,
         )
+
+
+class TrafilaturaMarkdown(BaseExtractor):
+    name = "⛏ Trafilatura to Markdown"
+    _requires_dependencies = ["trafilatura"]
+
+    def __init__(
+        self,
+        include_images: bool = False,
+        timeout: float = 0.1,
+        deduplicate: bool = True,
+        **kwargs,
+    ):
+        super().__init__(timeout)
+        self.include_images = include_images
+        self.deduplicate = deduplicate
+        self.kwargs = kwargs
+        if self.include_images:
+            raise NotImplementedError
+
+    def extract(self, html: str) -> str:
+        from trafilatura import extract
+        from trafilatura.xml import xmltotxt
+        from xml.etree import ElementTree as ET
+        xml_elements = extract(
+            html,
+            output_format="xml",
+            include_links=False,
+            include_comments=False,
+            deduplicate=self.deduplicate,
+            **self.kwargs,
+        )
+        if not xml_elements:
+            return ""
+        xml_elements = ET.fromstring(xml_elements)
+        text = xmltotxt(xml_elements, include_formatting=True)
+        return text
