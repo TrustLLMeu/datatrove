@@ -11,10 +11,10 @@ from huggingface_hub import (
     preupload_lfs_files,
 )
 from huggingface_hub.utils import HfHubHTTPError
-from loguru import logger
 
 from datatrove.io import DataFolderLike, get_datafolder
 from datatrove.pipeline.writers import ParquetWriter
+from datatrove.utils.logging import logger
 
 
 MAX_RETRIES = 12
@@ -117,6 +117,8 @@ class HuggingFaceDatasetWriter(ParquetWriter):
                     logger.info("Commit creation race condition issue. Waiting...")
                     time.sleep(BASE_DELAY * 2**retries + random.uniform(0, 2))
                     retries += 1
+                else:
+                    raise e
 
     def _on_file_switch(self, original_name, old_filename, new_filename):
         """
