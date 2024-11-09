@@ -18,6 +18,7 @@ class FineWebQualityFilter(BaseFilter):
         char_duplicates_ratio: float = 0.01,
         new_line_ratio: float = 0.3,
         language: str = Languages.english,
+        label_only: bool = False,
     ):
         super().__init__(exclusion_writer)
         self.line_punct_thr = line_punct_thr
@@ -27,28 +28,32 @@ class FineWebQualityFilter(BaseFilter):
         self.char_duplicates_ratio = char_duplicates_ratio
         self.new_line_ratio = new_line_ratio
         self.tokenizer = load_word_tokenizer(language)
+        self.label_only = label_only
 
     def filter(self, doc) -> bool | tuple[bool, str]:
         stop_chars = (".", "'", '"', "!", "?")
 
         lines = doc.text.split("\n")
         ratio = sum(1 for line in lines if line.endswith(stop_chars)) / len(lines)
-        if ratio <= self.line_punct_thr and not (ratio == 0 and self.line_punct_exclude_zero):
+        doc.metadata["fineweb_line_punct_ratio"] = ratio
+        if not self.label_only and ratio <= self.line_punct_thr and not (ratio == 0 and self.line_punct_exclude_zero):
             return False, "line_punct_ratio"
 
         ratio = sum(1 for line in lines if len(line) <= self.short_line_length) / len(lines)
-        if ratio >= self.short_line_threshold:
+        doc.metadata["fineweb_short_line_ratio"] = ratio
+        if not self.label_only and ratio >= self.short_line_threshold:
             return False, "short_line_ratio"
 
         non_empty_lines = [line for line in lines if line.strip() != ""]
         ratio = find_duplicates(non_empty_lines)[1] / len(doc.text.replace("\n", ""))
-
-        if ratio >= self.char_duplicates_ratio:
+        doc.metadata["fineweb_char_duplicates_ratio"] = ratio
+        if not self.label_only and ratio >= self.char_duplicates_ratio:
             return False, "char_dup_ratio"
 
         words = self.tokenizer.word_tokenize(doc.text)
         new_line = doc.text.count("\n")
-        if new_line / len(words) > self.new_line_ratio:
+        doc.metadata["fineweb_new_line_ratio"] = new_line / len(words)
+        if not self.label_only and new_line / len(words) > self.new_line_ratio:
             return False, "list_ratio"
 
         return True

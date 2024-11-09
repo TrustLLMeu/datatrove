@@ -83,6 +83,7 @@ class GopherRepetitionFilter(BaseFilter):
         dup_n_grams: tuple[tuple[int, float]] = ((5, 0.15), (6, 0.14), (7, 0.13), (8, 0.12), (9, 0.11), (10, 0.10)),
         exclusion_writer: DiskWriter = None,
         language: str = Languages.english,
+        label_only: bool = False,
     ):
         """
 
@@ -106,22 +107,27 @@ class GopherRepetitionFilter(BaseFilter):
         self.paragraph_exp = re.compile(r"\n{2,}")
         self._line_splitter = re.compile("\n+")
         self.tokenizer = load_word_tokenizer(language)
+        self.label_only = label_only
 
     def filter(self, doc: Document) -> bool | tuple[bool, str]:
         text = doc.text
 
         paragraphs = self.paragraph_exp.split(text.strip())
         paragraphs_duplicates, char_duplicates = find_duplicates(paragraphs)
-        if self.dup_para_frac and paragraphs_duplicates / len(paragraphs) > self.dup_para_frac:
+        doc.metadata["gopher_paragraph_duplicate_frac"] = paragraphs_duplicates / len(paragraphs)
+        doc.metadata["gopher_paragraph_char_duplicate_frac"] = char_duplicates / len(text)
+        if not self.label_only and self.dup_para_frac and paragraphs_duplicates / len(paragraphs) > self.dup_para_frac:
             return False, "dup_para_frac"
-        if self.dup_para_char_frac and char_duplicates / len(text) > self.dup_para_char_frac:
+        if not self.label_only and self.dup_para_char_frac and char_duplicates / len(text) > self.dup_para_char_frac:
             return False, "dup_para_char_frac"
 
         lines = self._line_splitter.split(text)
         line_duplicates, char_duplicates = find_duplicates(lines)
-        if self.dup_line_frac and line_duplicates / len(lines) > self.dup_line_frac:
+        doc.metadata["gopher_line_duplicate_frac"] = line_duplicates / len(lines)
+        doc.metadata["gopher_line_char_duplicate_frac"] = char_duplicates / len(text)
+        if not self.label_only and self.dup_line_frac and line_duplicates / len(lines) > self.dup_line_frac:
             return False, "dup_line_frac"
-        if self.dup_line_char_frac and char_duplicates / len(text) > self.dup_line_char_frac:
+        if not self.label_only and self.dup_line_char_frac and char_duplicates / len(text) > self.dup_line_char_frac:
             return False, "dup_line_char_frac"
 
         words = self.tokenizer.word_tokenize(text)
@@ -129,14 +135,17 @@ class GopherRepetitionFilter(BaseFilter):
         for n, n_frac in self.top_n_grams:
             n_grams = get_n_grams(words, n)
             if not n_grams:
+                doc.metadata[f"gopher_top_{n}_gram_char_frac"] = 0.0
                 continue
             top_char_length = find_top_duplicate(n_grams)
-            if top_char_length / len(text) > n_frac:
+            doc.metadata[f"gopher_top_{n}_gram_char_frac"] = top_char_length / len(text)
+            if not self.label_only and top_char_length / len(text) > n_frac:
                 return False, f"top_{n}_gram"
 
         for n, n_frac in self.dup_n_grams:
             n_duplicates_char = find_all_duplicate(words, n)
-            if n_duplicates_char / len(text) > n_frac:
+            doc.metadata[f"gopher_duplicated_{n}_gram_char_frac"] = n_duplicates_char / len(text)
+            if not self.label_only and n_duplicates_char / len(text) > n_frac:
                 return False, f"duplicated_{n}_n_grams"
 
         return True
