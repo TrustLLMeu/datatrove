@@ -14,6 +14,7 @@ class HTMLMetadata(BaseFilter):
     """
 
     name = "📋 HTML Metadata"
+    # Resiliparse is much much faster than beautifulsoup
     _requires_dependencies = ["resiliparse"]
 
     def __init__(
@@ -27,7 +28,12 @@ class HTMLMetadata(BaseFilter):
 
     def filter(self, doc: Document) -> bool | tuple[bool, str]:
         html = self.parser.parse(doc.text)
-        metas = {name: None for name in ['tdm-policy', 'tdm-reservation', 'keywords', 'description']}
+        metas = {name: None for name in [
+            'tdm-policy', 
+            'tdm-reservation', 
+            'keywords', 
+            'description',
+            ]}
         
         if html.head is not None:
             for match in html.head.query_selector_all(
@@ -40,7 +46,9 @@ class HTMLMetadata(BaseFilter):
         maybe_update(doc.metadata, 'tdm_reservation', metas['tdm-reservation'])
         
         # add html-metadata
-        doc.metadata['keywords'] = metas['keywords']
-        doc.metadata['description'] = metas['description']
+        for name in metas:
+            if name in ['tdm-policy', 'tdm-reservation']:
+                continue
+            doc.metadata[name] = metas[name]
         
         return True
