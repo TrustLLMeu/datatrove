@@ -1,33 +1,31 @@
 from datatrove.pipeline.filters.base_filter import BaseFilter
+from datatrove.pipeline.extractors.base import BaseExtractor
 from datatrove.data import Document
+import unicodedata
 
 def maybe_update(dict, key, val):
     if val is not None:
         dict[key] = val
 
-
-class HTMLMetadata(BaseFilter):
+class HTMLFilter(BaseFilter):
     """
-    Appends metadata to the thml document.
-    Does not filter, but datatrove has strange
-    interfaces ...
+    Extracts html metadata
     """
 
-    name = "📋 HTML Metadata"
-    # Resiliparse is much much faster than beautifulsoup
+    name = "📋 HTML Filter"
+
     _requires_dependencies = ["resiliparse"]
 
     def __init__(
-        self,
-    ):
+            self,
+            ):
+        super().__init__()
         from resiliparse.parse.html import HTMLTree
-
         self.parser = HTMLTree
 
-        super().__init__()
-
-    def filter(self, doc: Document) -> bool | tuple[bool, str]:
+    def filter(self, doc: Document):
         html = self.parser.parse(doc.text)
+
         metas = {name: None for name in [
             'tdm-policy', 
             'tdm-reservation', 
@@ -50,5 +48,26 @@ class HTMLMetadata(BaseFilter):
             if name in ['tdm-policy', 'tdm-reservation']:
                 continue
             doc.metadata[name] = metas[name]
-        
         return True
+
+class HTMLExtractor(BaseExtractor):
+    """
+    Extracts main content and tdm-relevant
+    """
+
+    name = "⚙️  HTML Extractor"
+    # Resiliparse is much much faster than trafilatura, and produces nice formatting.
+    _requires_dependencies = ["resiliparse"]
+
+    def __init__(
+        self,
+        min_length=128,
+        timeout = 0.2,
+    ):
+        super().__init__(timeout)
+        from resiliparse.extract.html2text import extract_plain_text
+
+        self.extract = lambda html: unicodedata.normalize('NFC', extract_plain_text(html, main_content=True, preserve_formatting=True))
+
+    def extract(self, doc: str) -> str:
+        return self.extract(doc)

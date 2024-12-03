@@ -4,8 +4,8 @@ from datatrove.io import DataFileLike, DataFolderLike
 from datatrove.pipeline.readers.base import BaseDiskReader
 
 
-if TYPE_CHECKING:
-    from warcio.recordloader import ArcWarcRecord
+#if TYPE_CHECKING:
+#    from warcio.recordloader import ArcWarcRecord
 
 
 class WarcReader(BaseDiskReader):
@@ -32,8 +32,8 @@ class WarcReader(BaseDiskReader):
         shuffle_files: shuffle the files within the returned shard. Mostly used for data viz. purposes, do not use with dedup blocks
     """
 
-    name = "🕷 Warc"
-    _requires_dependencies = ["warcio", ("cchardet", "faust-cchardet"), ("magic", "python-magic")]
+    name = "🕷 Warc + TDM"
+    _requires_dependencies = ["fastwarc", ("cchardet", "faust-cchardet"), ("magic", "python-magic")]
 
     def __init__(
         self,
@@ -48,6 +48,7 @@ class WarcReader(BaseDiskReader):
         text_key: str = "text",
         id_key: str = "id",
         default_metadata: dict = None,
+        min_length = 0,
         recursive: bool = True,
         glob_pattern: str | None = None,
         shuffle_files: bool = False,
@@ -68,12 +69,18 @@ class WarcReader(BaseDiskReader):
             glob_pattern,
             shuffle_files,
         )
+        self.min_length=min_length
 
     def read_file(self, filepath: str):
-        from warcio.archiveiterator import ArchiveIterator
+        from fastwarc.warc import ArchiveIterator, WarcRecordType, WarcRecord
+
 
         with self.data_folder.open(filepath, "rb", compression=self.compression) as f:
-            for ri, record in enumerate(ArchiveIterator(f)):
+            for ri, record in enumerate(ArchiveIterator(
+                    f,
+                    record_types=WarcRecordType.response,
+                    min_content_length=self.min_length
+                    )):
                 with self.track_time():
                     extracted_data = process_record(record)
                     if not extracted_data:
@@ -84,27 +91,27 @@ class WarcReader(BaseDiskReader):
                 yield document
 
 
-def process_record(record: "ArcWarcRecord") -> dict | None:
+def process_record(record : "WarcRecord") -> dict | None:
     """Process a WARC record to extract the html and metadata (id, url, date)."""
     import cchardet
     import magic
 
     # record type
-    if record.rec_type != "response" and record.rec_type != "conversion":  # wet files have "conversion" type
-        return
+    #if record.rec_type != "response" and record.rec_type != "conversion":  # wet files have "conversion" type
+    #    return
+
 
     # content type filtering
-    mime_type = record.rec_headers.get("WARC-Identified-Payload-Type", None)
-    if mime_type is not None and (
-        mime_type != "text/html" and (record.rec_type != "conversion" or mime_type != "text/plain")
-    ):
+    mime_type = record.headers.get("WARC-Identified-Payload-Type", None)
+    if mime_type is not None and mime_type != "text/html":
         return
 
-    content_bytes = record.content_stream().read()
+    record.parse_http()
+    content_bytes = record.reader.read()
     if mime_type is None:
         # fallback for older crawls without payload types
         mime_type = magic.from_buffer(content_bytes, mime=True)
-        if mime_type != "text/html" and (record.rec_type != "conversion" or mime_type != "text/plain"):
+        if mime_type != "text/html":
             return
 
     # Decode the response bytes
@@ -122,16 +129,18 @@ def process_record(record: "ArcWarcRecord") -> dict | None:
         except (UnicodeDecodeError, LookupError):
             return
 
-    id_ = record.rec_headers["WARC-Record-ID"]
-    url = record.rec_headers.get("WARC-Target-URI", None)
-    date = record.rec_headers.get("WARC-Date", None)
+    id_ = record.headers["WARC-Record-ID"]
+    url = record.headers.get("WARC-Target-URI", None)
+    date = record.headers.get("WARC-Date", None)
+    offset = record.stream_pos
+    charset = charset
     tdm_reservation = record.http_headers.get('tdm-reservation', None)
     tdm_policy = record.http_headers.get('tdm-policy', None)
 
     # handle older formats
     if not url:
-        url = dict(record.rec_headers.headers)["uri"]
+        url = record.headers["uri"]
     if not date:
-        date = dict(record.rec_headers.headers)["archive-date"]
+        date = record.headers["archive-date"]
 
-    return {"text": html, "id": id_, "url": url, "date": date, "tdm_reservation": tdm_reservation, "tdm_policy": tdm_policy}
+    return {"text": html, "id": id_, "offset": offset, "original_charset": charset, "url": url, "date": date, "tdm_reservation": tdm_reservation, "tdm_policy": tdm_policy}
