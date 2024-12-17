@@ -2,18 +2,22 @@ from datatrove.pipeline.filters.base_filter import BaseFilter
 
 class Bound:
     def __init__(self, low=None, high=None, accept_none=False):
-        self.low_pass = (lambda x: low <= x) if low is not None  else (lambda x: True)
-        self.high_pass = (lambda x: x <= high) if high is not None else (lambda x: True)
-        self.none_pass = (lambda x: accept_none)
+        self.low = low
+        self.high = high
+        self.accept_none = accept_none
 
     def __call__(self, x):
         if x is None:
-            if not self.none_pass(x):
+            if self.accept_none:
+                return True
+            else:
                 return False, 'is None'
         else:
-            if not self.low_pass(x):
+            # truthy values does not work if threshold is 0
+            # so we need to explicitly check for none
+            if (self.low is not None) and self.low > x:
                 return False, 'below threshold'
-            if not self.high_pass(x):
+            if (self.high is not None) and self.high < x:
                 return False, 'above threshold'
         return True
 
@@ -24,6 +28,7 @@ class Record(object):
     def filter(self, **bounds):
         for key, bound in bounds.items():
             value = getattr(self, key)()
+            # store filter values in metadata
             self.doc.metadata[f'{key}'] = value
             match bound(value):
                 case (False, reason):

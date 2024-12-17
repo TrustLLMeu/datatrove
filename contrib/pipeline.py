@@ -13,14 +13,8 @@ from datatrove.pipeline.filters import (
     LanguageFilter,
     URLFilter,
 )
+import argparse
 
-DUMP = 'CC-MAIN-2023-50'
-INPATH = f'/p/data1/datasets/CommonCrawl/{DUMP}'
-OUTPATH = f'/p/scratch/trustllm-eu/WP2/CC/{DUMP}/out'
-LOGPATH = f'/p/scratch/trustllm-eu/WP2/CC/{DUMP}/log'
-
-def exclusion_writer(name):
-    return JsonlWriter(f'{OUTPATH}/removed/{name}')
 
 LANGSET = [
     'eng', # English
@@ -57,52 +51,50 @@ LANGSET = [
     'non', # Old Norse
     ]
 
-pipeline = [
-        WarcReader(
-            DataFolder(INPATH),
-            glob_pattern='**/*warc.gz',
-            recursive=True,
-            min_length=512,
-            ),
-        URLFilter(exclusion_writer=exclusion_writer('url')),
-        HTMLFilter(), #This is not a filter, it just adds html metadata tags that are removed by text extraction.
-        HTMLExtractor(),
-        PreFilter(exclusion_writer=exclusion_writer('prefilter')),
-        LanguageFilter(
-            exclusion_writer=exclusion_writer('language'),
-            languages = [f'{l}_Latn' for l in LANGSET],
-            backend='glotlid',
-            language_threshold=.4
-            ),
-        RepetitionFilter(exclusion_writer=exclusion_writer('repetition')),
-        C4QualityFilter(
-            filter_no_terminal_punct=False,
-            filter_curly_bracket=False,
-            filter_javascript=False,
-            exclusion_writer=exclusion_writer('c4'),
-            ),
-        JsonlWriter(OUTPATH),
-        ]
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input_data_dir", type=str)
+    parser.add_argument("--output_path", type=str)
+    parser.add_argument("--total_tasks", type=int, default=400)
+    parser.add_argument("--local_tasks", type=int, default=100)
+    parser.add_argument("--local_rank_offset", type=int, default=0)
+    parser.add_argument("--workers", type=int, default=10)
+    args = parser.parse_args()
 
-#executor = LocalPipelineExecutor(
-#        pipeline=pipeline,
-#        tasks=1,
-#        logging_dir=LOGPATH,
-#        workers=1,
-#        )
+    INPATH = args.input_data_dir
+    OUTPATH = args.output_path
 
-executor = SlurmPipelineExecutor(
-    pipeline=pipeline,
-    logging_dir=LOGPATH,
-    tasks=2,
-    cpus_per_task=48,
-    mem_per_cpu_gb=96,
-    job_name='datatrove-trustllm',
-    partition='batch',
-    time='24:00:00',
-    sbatch_args = {'account': 'trustllm-eu'},
-    requeue=False,
-)
+    pipeline = [
+            WarcReader(
+                DataFolder(args.input_data_dir),
+                glob_pattern='**/*warc.gz',
+                recursive=True,
+                min_length=512,
+                ),
+            # URLFilter(), SKIP THIS: TLDEXTRACT 
+            HTMLFilter(), #This is not a filter, it just adds html metadata tags that are removed by text extraction.
+            HTMLExtractor(),
+            PreFilter(),
+            LanguageFilter(
+                languages = [f'{l}_Latn' for l in LANGSET],
+                backend='glotlid',
+                language_threshold=.4
+                ),
+            RepetitionFilter(),
+            C4QualityFilter(
+                filter_no_terminal_punct=False,
+                filter_curly_bracket=False,
+                filter_javascript=False,
+                ),
+            JsonlWriter(f'{OUTPATH}/data'),
+            ]
 
-if __name__ == '__main__':
+    executor = LocalPipelineExecutor(
+            pipeline=pipeline,
+            tasks=args.total_tasks,
+            local_tasks=args.local_tasks,
+            local_rank_offset=args.local_rank_offset,
+            workers=args.workers,
+            logging_dir=f'{OUTPATH}/logs'
+            )
     executor.run()

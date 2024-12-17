@@ -129,6 +129,9 @@ def process_record(record : "WarcRecord") -> dict | None:
         except (UnicodeDecodeError, LookupError):
             return
 
+    if not html:
+        return
+
     id_ = record.headers["WARC-Record-ID"]
     url = record.headers.get("WARC-Target-URI", None)
     date = record.headers.get("WARC-Date", None)
